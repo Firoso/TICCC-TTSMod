@@ -1,1 +1,354 @@
+--[[ Lua code. See documentation: http://berserk-games.com/knowledgebase/scripting/ --]]
 
+--[[ The onLoad event is called after the game save finishes loading. --]]
+function onLoad()
+    --[[ print('onLoad!') --]]
+end
+
+--[[ The onUpdate event is called once per frame. --]]
+function onUpdate ()
+    --[[ print('onUpdate loop!') --]]
+end
+bagGUIDx3 = {}
+bagGUIDx3['Commodities/Tradegoods x3'] = 'd7a79a'
+bagGUIDx3['x3 Infantry'] = 'e11e93'
+bagGUIDx3['x3 Fighter Token'] = '981347'
+bagGUIDx1 = {}
+bagGUIDx1['Commodities/Tradegoods x3'] = '3e4983'
+bagGUIDx1['x3 Infantry'] = '7f7238'
+bagGUIDx1['x3 Fighter Token'] = 'e8ffc2'
+--Below is added or modified by GarnetBear April, 22, 2019
+bagGUIDx1['x1 Infantry'] = '7f7238'
+bagGUIDx1['x1 Fighter Token'] = 'e8ffc2'
+
+
+
+function onObjectRandomize(object, playerColor)
+    objName = object.getName()
+    if bagGUIDx3[objName] ~= nil then
+        pos = object.getPosition()
+        pos.y = pos.y + 2
+        rot = object.getRotation()
+        bagObjx1 = getObjectFromGUID(bagGUIDx1[objName])
+        bagObjx3 = getObjectFromGUID(bagGUIDx3[objName])
+        takeParams = {
+            position = pos,
+            rotation = rot
+        }
+        bagObjx3.putObject(object)
+        for i=1,3 do bagObjx1.takeObject(takeParams) end
+    elseif objName == 'x1 Infantry' or objName == 'x1 Fighter Token' then
+        pos = object.getPosition()
+        pos.y = pos.y + 2
+        rot = object.getRotation()
+        bagObjx1 = getObjectFromGUID(bagGUIDx1[objName])
+        local bagName
+        if objName == 'x1 Infantry' then
+            bagName = playerColor.." Infantry"
+        else
+            bagName = playerColor.." Fighter"
+        end
+        takeParams = {
+            position = pos,
+            rotation = rot
+        }
+        local allObjects = getAllObjects()
+        for i, obj in ipairs(allObjects) do
+            if obj.getName() == bagName  and obj.tag == 'Bag' then
+                if #obj.getObjects() > 0 then
+                    obj.takeObject(takeParams)
+                    bagObjx1.putObject(object)
+                else
+                    broadcastToColor("No More Units", playerColor, {0.8,0.2,0.2})
+                end
+            end
+        end
+    elseif objName == playerColor.." Infantry" or objName == playerColor.." Fighter" then
+        if object.tag ~= 'Bag' then
+            pos = object.getPosition()
+            pos.y = pos.y + 2
+            rot = object.getRotation()
+            local bagName
+            if objName == playerColor.." Infantry" then
+                bagName = playerColor.." Infantry"
+                tokenName = 'x1 Infantry'
+            else
+                bagName = playerColor.." Fighter"
+                tokenName = 'x1 Fighter Token'
+            end
+            local bagObjx1 = getObjectFromGUID(bagGUIDx1[tokenName])
+            takeParams = {
+                position = pos,
+                rotation = rot
+            }
+            local allObjects = getAllObjects()
+            for i, obj in ipairs(allObjects) do
+                if obj.getName() == bagName  and obj.tag == 'Bag' then
+                    obj.putObject(object)
+                end
+            end
+            bagObjx1.takeObject(takeParams)
+        end
+    end
+end
+--Above is added or modified by GarnetBear April, 22, 2019
+
+--below is modified by GarnetBear May, 3, 2019
+function onObjectDrop(playerColor,object)
+    if playerColor == Turns.turn_color then
+        local name = object.getName()
+        if string.find(name, "Command Token") ~= nil then
+            local pos = object.getPosition()
+            if isInZone(pos,'Tiles') then
+                local currentZone = getZone(playerColor)
+                local race = getRace(playerColor,currentZone)
+                if name == race.." Command Token" then
+                    local SearchList = getObjectsAtPosition(pos, 10, 'Generic')
+                    for _, obj in ipairs(SearchList) do
+                        for tilenumber = 1, 51 do
+                            if obj.getGUID() == TileInfo[tilenumber][1] then
+                                broadcastToAll(race.. " Activated "..TileInfo[tilenumber][2], playerColor)
+                                obj.highlightOn(playerColor,30)
+                                --AssignTile(obj,playerColor,InputValue,stillEditing)
+                                local params = {playerColor=playerColor,InputValue=TileInfo[tilenumber][2],stillEditing=false}
+                                local allObjects = getAllObjects()
+                                for i, targetObj in ipairs(allObjects) do
+                                    local objectName = targetObj.getName()
+                                    local position = targetObj.getPosition()
+                                    if string.find(objectName, "Spawner") ~= nil then
+                                        if isInZone(position,currentZone) then
+                                            targetObj.call("AssignTileGlobal",params)
+                                        end
+                                    elseif string.find(objectName, "Planet 1") ~= nil then
+                                        local paramsPlanet = {playerColor=playerColor,InputValue=TileInfo[tilenumber][3],stillEditing=false}
+                                        targetObj.call("AssignTileGlobal",paramsPlanet)
+                                    elseif string.find(objectName, "Planet 2") ~= nil then
+                                        local paramsPlanet = {playerColor=playerColor,InputValue=TileInfo[tilenumber][4],stillEditing=false}
+                                        targetObj.call("AssignTileGlobal",paramsPlanet)
+                                    elseif string.find(objectName, "Aggressor") ~= nil or string.find(objectName, "Defender") ~= nil then
+                                        targetObj.call("AssignTileGlobal",params)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function getZone(playerColor)
+    local allObjects = getAllObjects()
+    local currentZone
+    for i, object in ipairs(allObjects) do
+        --check position and compare to drawer zone ranges
+        local name = object.getName()
+        local pos = object.getPosition()
+        local checkName = string.find(name, "Command Sheet")
+        if checkName ~= nil then
+            local cmdSheetColor = string.sub(name,16,-2)
+            if cmdSheetColor == playerColor then
+                for zone = 1, 6 do
+                    if isInZone(pos, zone) then
+                        return zone
+                    end
+                end
+            end
+        end
+    end
+    if currentZone == nil then
+        broadcastToColor("No Command Sheet Detected.", playerColor, {0.8,0.2,0.2})
+        return
+    end
+end
+
+function getRace(playerColor,currentZone)
+    local race
+    allObjects = getAllObjects()
+    for i, object in ipairs(allObjects) do
+        --check position and compare to drawer zone ranges
+        local pos = object.getPosition()
+        local name = object.getName()
+        if isInZone(pos, currentZone) then
+            --check for the object with Sheet in the name
+            local checkName = string.find(name, "Sheet", -6)
+            if checkName ~= nil then
+                race = string.sub(object.getName(), 5, -7)
+                return race
+            end
+        end
+    end
+    if race == nil then
+        broadcastToColor("No Race Sheet Detected.", playerColor, {0.8,0.2,0.2})
+        return
+    end
+end
+
+xmin = {21, -21, -51, 21, -21, -51}
+xmax = {51, 21, -21, 51, 21, -21}
+zmin = {-50, -50, -50, 6, 21, 6}
+zmax = {-6, -21, -6, 49, 49, 49}
+
+function isInZone(pos, zoneIndex)
+    local minimumZ
+    local maximumZ
+    if zoneIndex == 2 then
+        if pos.x > 1.5 then
+            maximumZ = 0.6 * pos.x - 20.4
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= zmin[zoneIndex] and pos.z <= maximumZ
+        elseif pos.x <-1.5 then
+            maximumZ = -0.6 * pos.x - 20.4
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= zmin[zoneIndex] and pos.z <= maximumZ
+        else
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= zmin[zoneIndex] and pos.z <= -21
+        end
+    elseif zoneIndex == 5 then
+        if pos.x > 1.5 then
+            minimumZ = -0.6 * pos.x + 20.4
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= minimumZ and pos.z <= zmax[zoneIndex]
+        elseif pos.x <-1.5 then
+            minimumZ = 0.6 * pos.x + 20.4
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= minimumZ and pos.z <= zmax[zoneIndex]
+        else
+            return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= 21 and pos.z <= zmax[zoneIndex]
+        end
+    elseif zoneIndex == 1 or zoneIndex == 3 or zoneIndex == 4 or zoneIndex == 6 then
+        return pos.x >= xmin[zoneIndex] and pos.x <= xmax[zoneIndex] and pos.z >= zmin[zoneIndex] and pos.z <= zmax[zoneIndex]
+    elseif zoneIndex == 'Tiles' then
+        return pos.x >= -28 and pos.x <= 28 and pos.z >= -28 and pos.z <= 28
+    end
+end
+
+function getObjectsAtPosition(pos, SearchDiameter, Tag)
+    local objList = Physics.cast({
+        origin=pos, direction={0,1,0}, type=3, size={0.1,SearchDiameter,0.1},
+        max_distance=0, debug=false
+    })
+    local foundItems = {}
+    for i, obj in ipairs(objList) do
+        if Tag == nil then
+            table.insert(foundItems, obj.hit_object)
+        else
+            if obj.hit_object.tag == Tag then
+                table.insert(foundItems, obj.hit_object)
+            end
+        end
+    end
+    return foundItems
+end
+
+TileInfo = {}
+TileInfo[1] = {'86e50a', '1 - Jord', 'Jord', '-'}
+TileInfo[2] = {'ac3193', '2 - Moll Primus', 'Moll Primus', '-'}
+TileInfo[3] = {'db8aac', '3 - Darien', 'Darien', '-'}
+TileInfo[4] = {'da7879', '4 - Muaat', 'Muaat', '-'}
+TileInfo[5] = {'fc6f7a', '5 - Nestphar', 'Nestphar', '-'}
+TileInfo[6] = {'420355', '6 - [0.0.0]', '[0.0.0]', '-'}
+TileInfo[7] = {'087347', '7 - Winnu', 'Winnu', '-'}
+TileInfo[8] = {'ea676a', '8 - Mordai II', 'Mordai II', '-'}
+TileInfo[9] = {'0122f9', '9 - Druaa, Maaluuk', 'Maaluuk', 'Druaa'}
+TileInfo[10] = {'e001b4', '10 - Arc Prime, Wren Terra', 'Arc Prime', 'Wren Terra'}
+TileInfo[11] = {'d39876', '11 - Lisis II, Ragh', 'Lisis II', 'Ragh'}
+TileInfo[12] = {'11598c', '12 - Jol, Nar', 'Nar', 'Jol'}
+TileInfo[13] = {'6176bf', "13 - Tren'lak, Quinarra", "Tren'lak", 'Quinarra'}
+TileInfo[14] = {'c2509e', '14 - Archon Ren, Archon Tau', 'Archon Ren', 'Archon Tau'}
+TileInfo[15] = {'9c373a', '15 - Retillion, Shalloq', 'Retillion', 'Shalloq'}
+TileInfo[16] = {'6a4247', '16 - Arretze, Hercant, Kamdorn', 'Hercant', 'Arretze'}
+TileInfo[17] = {'c56a8a', '17 - δ-Wormhole', '-', '-'}
+TileInfo[18] = {'04df02', '18 - Mecatol Rex', 'Mecatol Rex', '-'}
+TileInfo[19] = {'4216fd', '19 - Wellon', 'Wellon', '-'}
+TileInfo[20] = {'bc4bcc', '20 - Vefut II', 'Vefut II', '-'}
+TileInfo[21] = {'f2798a', '21 - Thibah', 'Thibah', '-'}
+TileInfo[22] = {'0ea77f', "22 - Tar'mann", "Tar'mann", '-'}
+TileInfo[23] = {'7975f7', '23 - Saudor', 'Saudor', '-'}
+TileInfo[24] = {'48cc9f', '24 - Mehar Xull', 'Mehar Xull', '-'}
+TileInfo[25] = {'71e1bf', '25 - Quann, β-Wormhole', 'Quann', '-'}
+TileInfo[26] = {'f11ef5', '26 - Lodor, ⍺-Wormhole', 'Lodor', '-'}
+TileInfo[27] = {'fc239f', '27 - New Albion, Starpoint', 'New Albion', 'Starpoint'}
+TileInfo[28] = {'f8caf6', "28 - Tequ'ran, Torkan", "Tequ'ran", 'Torkan'}
+TileInfo[29] = {'0ac98b', "29 - Qucen'n, Rarron", "Qucen'n", 'Rarron'}
+TileInfo[30] = {'aaae9f', '30 - Mellon, Zohbat', 'Mellon', 'Zohbat'}
+TileInfo[31] = {'d5ed63', '31 - Lazar, Sakulag', 'Lazar', 'Sakulag'}
+TileInfo[32] = {'48ac87', '32 - Dal Bootha, Xxehan', 'Dal Bootha', 'Xxehan'}
+TileInfo[33] = {'87a5a2', '33 - Corneeq, Resculon', 'Corneeq', 'Resculon'}
+TileInfo[34] = {'eb99c0', '34 - Centauri, Gral', 'Centauri', 'Gral'}
+TileInfo[35] = {'dd2ca7', '35 - Bereg, Lirta IV', 'Bereg', 'Lirta IV'}
+TileInfo[36] = {'a284d1', '36 - Arnor, Lor', 'Arnor', 'Lor'}
+TileInfo[37] = {'e0ff33', '37 - Arinam, Meer', 'Arinam', 'Meer'}
+TileInfo[38] = {'b958aa', '38 - Abyz, Fria', 'Abyz', 'Fria'}
+TileInfo[39] = {'0378a4', '39 - ⍺-Wormhole', '-', '-'}
+TileInfo[40] = {'ccd7ac', '40 - β-Wormhole', '-', '-'}
+TileInfo[41] = {'47a55d', '41 - Gravity Rift', '-', '-'}
+TileInfo[42] = {'d13aa2', '42 - Nebula', '-', '-'}
+TileInfo[43] = {'dca098', '43 - Supernova', '-', '-'}
+TileInfo[44] = {'cd58c7', '44 - Asteroid Field', '-', '-'}
+TileInfo[45] = {'7db8d8', '45 - Asteroid Field', '-', '-'}
+TileInfo[46] = {'9dce5a', '46 - Empty Space', '-', '-'}
+TileInfo[47] = {'437f06', '47 - Empty Space', '-', '-'}
+TileInfo[48] = {'ff8f60', '48 - Empty Space', '-', '-'}
+TileInfo[49] = {'0216be', '49 - Empty Space', '-', '-'}
+TileInfo[50] = {'97ee53', '50 - Empty Space', '-', '-'}
+TileInfo[51] = {'f38182', '51 - Creuss, δ-Wormhole', 'Creuss', '-'}
+
+--above is modified by GarnetBear May, 3, 2019
+
+function genericFollow(player, id)
+    broadcastToAll(player.steam_name .. " uses " .. id .. ".", player.color)
+end
+
+function notFollow(player, id)
+    broadcastToAll(player.steam_name .. " does not use " .. id .. ".", player.color)
+end
+
+function closeMenu(player_color, menu)
+    vis = UI.getAttribute(menu, "visibility")
+    if vis == nil or vis == "" then
+        seatedPlayers = getSeatedPlayers()
+        for p, player in pairs(seatedPlayers) do
+            if vis == nil or vis == "" then
+                vis = player
+            else
+                vis = vis .. "|" .. player
+            end
+        end
+    end
+    i, j = string.find(vis, player_color.color)
+    l = string.len(vis)
+    if i ~= nil and j ~= nil then
+        if i == 1 then
+            if j == l then
+                newVis = ""
+            else
+                newVis = string.sub(vis,j+2,l)
+            end
+        else
+            if j == l then
+                newVis = string.sub(vis,1,i-2)
+            else
+                newVis = string.sub(vis,1,i-1) .. string.sub(vis,j+2,l)
+            end
+        end
+    end
+    if newVis == "" then
+        UI.setAttribute(menu, "active", false)
+        broadcastToAll("All players have responded", "Black")
+    end
+    UI.setAttribute(menu, "visibility", newVis)
+end
+
+function politicsPrimary(player, option)
+    broadcastToAll(player.steam_name .. " places " .. option .. " of the agenda deck.", player.color)
+end
+
+function constructionPrimary(player, option)
+    broadcastToAll(player.steam_name .. " uses Construction Primary to build " .. option .. ".", player.color)
+end
+
+function constructionSecondary(player, option)
+    broadcastToAll(player.steam_name .. " uses Construction Secondary to build " .. option .. ".", player.color)
+end
+
+function pickTech(player, id)
+    broadcastToAll(player.steam_name .. " researches " .. id .. ".", player.color)
+end
